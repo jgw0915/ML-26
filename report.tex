@@ -1,0 +1,135 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{array}
+\usepackage{float}
+\title{Final Project: Naive Bayesian Classifier and Bagging}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+This project evaluates a Naive Bayesian classifier (NBC) and bagging ensembles of NBC models on three UCI Machine Learning Repository datasets: Banknote Authentication, Glass Identification, and Image Segmentation. The goal is to compare the original NBC with bagging ensembles containing 10, 20, and 30 base models.
+
+\section{Methodology}
+All datasets were downloaded by the \texttt{ucimlrepo} package. The dataset identifiers were 267 for Banknote Authentication, 42 for Glass Identification, and 50 for Image Segmentation. Continuous attributes were discretized with equal-width discretization into ten bins. The discretizer was fit only on the training portion of each fold, then applied to the corresponding test portion.
+
+The NBC model estimates class priors and feature conditional probabilities with Laplace estimation. Missing feature values are ignored when estimating conditional probabilities and are also skipped during prediction. For bagging, each base NBC was trained on a bootstrap sample of the training fold. Final predictions were produced by majority vote. Ties were broken deterministically by the sorted class labels.
+
+Performance was measured by five-fold cross validation using only train and test splits. The fold assignment follows Chapter 4 method III. First, each instance is assigned a random number from the uniform interval [0,1]. Second, instances are sorted by the random number. Third, the sorted instances are read sequentially and assigned cyclically to folds 1 through 5. This makes the fold sizes approximately equal, and the size difference between any two folds is at most one. The random seed was fixed at 42 for reproducibility.
+
+\section{Experimental Results}
+\begin{table}[H]
+\centering
+\small
+\caption{Five-fold cross-validation accuracy.}
+\label{tab:summary}
+\begin{tabular}{llrr}
+\toprule
+Dataset & Model & Base models & Accuracy (\%) \\
+\midrule
+Banknote Authentication & NBC & 1 & 89.80 $\pm$ 3.21 \\
+Banknote Authentication & Bagging NBC (10) & 10 & 89.65 $\pm$ 3.67 \\
+Banknote Authentication & Bagging NBC (20) & 20 & 89.94 $\pm$ 3.67 \\
+Banknote Authentication & Bagging NBC (30) & 30 & 90.09 $\pm$ 3.44 \\
+Glass Identification & NBC & 1 & 60.29 $\pm$ 9.68 \\
+Glass Identification & Bagging NBC (10) & 10 & 61.73 $\pm$ 12.46 \\
+Glass Identification & Bagging NBC (20) & 20 & 62.60 $\pm$ 7.07 \\
+Glass Identification & Bagging NBC (30) & 30 & 64.52 $\pm$ 11.34 \\
+Image Segmentation & NBC & 1 & 80.00 $\pm$ 5.98 \\
+Image Segmentation & Bagging NBC (10) & 10 & 79.05 $\pm$ 6.39 \\
+Image Segmentation & Bagging NBC (20) & 20 & 80.00 $\pm$ 6.43 \\
+Image Segmentation & Bagging NBC (30) & 30 & 80.00 $\pm$ 4.33 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Analysis}
+Bagging helped at least one ensemble size on Banknote Authentication and Glass Identification, but the best number of base models was not identical across datasets. For Banknote Authentication, the original NBC reached 89.80\% accuracy. Bagging with 30 base models obtained the best result, 90.09\%, but the improvement was small.
+
+Glass Identification benefited the most from bagging. The original NBC reached 60.29\%, while bagging with 30 base models reached 64.52\%. The 10-model and 20-model ensembles were also above NBC, so bagging was consistently better on this dataset in mean accuracy.
+
+For Image Segmentation, NBC, Bagging-20, and Bagging-30 all produced 80.00\% mean accuracy, while Bagging-10 decreased to 79.05\%. This suggests that bagging did not materially improve this dataset under the chosen discretization.
+
+\section{Result Evaluation}
+Chapter 5 describes matched-sample and independent-sample approaches for comparing two classification algorithms. In a single dataset, the matched-sample method compares the fold-by-fold accuracy differences. Its statistic is $t=\bar{d}/\sqrt{s_d^2/k}$ with $k-1$ degrees of freedom. The independent-sample method compares the two fold-accuracy samples as if they were independent, using $t=(\bar{x}_1-\bar{x}_2)/\sqrt{s_1^2/k+s_2^2/k}$ with Welch degrees of freedom. Because all models in this project are tested on the same folds, the matched-sample test is the more appropriate primary test; the independent-sample values are reported as secondary checks.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Single-dataset NBC versus bagging comparisons. Positive differences favor bagging.}
+\label{tab:single-nbc}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{lllrrrrr}
+\toprule
+Dataset & Baseline & Comparison & Diff. (\%) & Matched $t$ & Matched $p$ & Indep. $t$ & Indep. $p$ \\
+\midrule
+Banknote Authentication & NBC & Bagging NBC (10) & -0.15 & -0.2812 & 0.7925 & -0.0675 & 0.9479 \\
+Banknote Authentication & NBC & Bagging NBC (20) & 0.15 & 0.3866 & 0.7187 & 0.0666 & 0.9485 \\
+Banknote Authentication & NBC & Bagging NBC (30) & 0.29 & 0.5577 & 0.6068 & 0.1382 & 0.8935 \\
+Glass Identification & NBC & Bagging NBC (10) & 1.44 & 0.4002 & 0.7095 & 0.2040 & 0.8437 \\
+Glass Identification & NBC & Bagging NBC (20) & 2.31 & 1.0463 & 0.3545 & 0.4317 & 0.6784 \\
+Glass Identification & NBC & Bagging NBC (30) & 4.23 & 1.2097 & 0.2930 & 0.6345 & 0.5439 \\
+Image Segmentation & NBC & Bagging NBC (10) & -0.95 & -0.7845 & 0.4766 & -0.2434 & 0.8138 \\
+Image Segmentation & NBC & Bagging NBC (20) & 0.00 & 0.0000 & 1.0000 & 0.0000 & 1.0000 \\
+Image Segmentation & NBC & Bagging NBC (30) & 0.00 & 0.0000 & 1.0000 & 0.0000 & 1.0000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:single-bagging} compares different bagging sizes inside each dataset. One matched-sample result is significant at $\alpha=0.05$: for Glass Identification, Bagging-30 is better than Bagging-10 with $p=0.0327$. The corresponding independent-sample $p$-value is 0.7207, showing that the independent-sample method is much less sensitive when the same folds are actually shared.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Single-dataset comparisons among bagging ensemble sizes.}
+\label{tab:single-bagging}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{lllrrrrr}
+\toprule
+Dataset & Baseline & Comparison & Diff. (\%) & Matched $t$ & Matched $p$ & Indep. $t$ & Indep. $p$ \\
+\midrule
+Banknote Authentication & Bagging NBC (10) & Bagging NBC (20) & 0.29 & 1.0918 & 0.3363 & 0.1259 & 0.9029 \\
+Banknote Authentication & Bagging NBC (10) & Bagging NBC (30) & 0.44 & 1.6352 & 0.1773 & 0.1946 & 0.8506 \\
+Banknote Authentication & Bagging NBC (20) & Bagging NBC (30) & 0.15 & 0.5874 & 0.5885 & 0.0646 & 0.9501 \\
+Glass Identification & Bagging NBC (10) & Bagging NBC (20) & 0.87 & 0.2200 & 0.8367 & 0.1366 & 0.8956 \\
+Glass Identification & Bagging NBC (10) & Bagging NBC (30) & 2.79 & 3.2071 & 0.0327 & 0.3705 & 0.7207 \\
+Glass Identification & Bagging NBC (20) & Bagging NBC (30) & 1.92 & 0.5566 & 0.6075 & 0.3207 & 0.7582 \\
+Image Segmentation & Bagging NBC (10) & Bagging NBC (20) & 0.95 & 1.6330 & 0.1778 & 0.2349 & 0.8202 \\
+Image Segmentation & Bagging NBC (10) & Bagging NBC (30) & 0.95 & 0.3885 & 0.7174 & 0.2760 & 0.7905 \\
+Image Segmentation & Bagging NBC (20) & Bagging NBC (30) & 0.00 & 0.0000 & 1.0000 & 0.0000 & 1.0000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+For multiple datasets, Chapter 5 extends the fold-averaging approach. The matched-sample method first averages the fold differences inside each dataset and then averages these differences across datasets. The independent-sample method averages each algorithm's fold accuracies inside each dataset and compares the global means. Table~\ref{tab:multiple} reports both methods for NBC versus bagging and for different bagging sizes.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Multiple-dataset comparisons using Chapter 5 fold-averaging methods.}
+\label{tab:multiple}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{llrrrrr}
+\toprule
+Baseline & Comparison & Diff. (\%) & Matched $t$ & Matched $p$ & Indep. $t$ & Indep. $p$ \\
+\midrule
+NBC & Bagging NBC (10) & 0.11 & 0.0888 & 0.9327 & 0.0407 & 0.9687 \\
+NBC & Bagging NBC (20) & 0.82 & 0.9478 & 0.3798 & 0.3517 & 0.7341 \\
+NBC & Bagging NBC (30) & 1.51 & 1.1336 & 0.3002 & 0.5848 & 0.5800 \\
+Bagging NBC (10) & Bagging NBC (20) & 0.71 & 0.5261 & 0.6266 & 0.2674 & 0.7969 \\
+Bagging NBC (10) & Bagging NBC (30) & 1.39 & 1.5987 & 0.1708 & 0.4870 & 0.6435 \\
+Bagging NBC (20) & Bagging NBC (30) & 0.69 & 0.4694 & 0.6530 & 0.2837 & 0.7848 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The statistical comparison supports a cautious conclusion. Bagging-30 has the largest average improvement over NBC across datasets, but its matched-sample $p$-value is 0.3002 and its independent-sample $p$-value is 0.5800, so the improvement is not statistically significant at $\alpha=0.05$. Comparing different bagging sizes, Bagging-30 has the highest average accuracy among ensembles, but none of the multiple-dataset bagging-size comparisons are significant at $\alpha=0.05$.
+
+\section{Conclusion}
+Overall, bagging was better than the original NBC in mean accuracy for Banknote Authentication and Glass Identification, and it tied NBC on Image Segmentation when 20 or 30 base models were used. The best ensemble size was 30 for Banknote Authentication and Glass Identification, while Image Segmentation showed no improvement beyond the NBC baseline. According to the Chapter 5 statistical tests, these improvements are not significant at the 0.05 level, so the final conclusion is that bagging shows a positive but not statistically confirmed advantage in this experiment.
+
+\end{document}
