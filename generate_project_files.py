@@ -52,29 +52,32 @@ def make_markdown_table(rows: list[dict[str, str]]) -> str:
 def make_markdown_eval_table(rows: list[dict[str, str]], include_dataset: bool) -> str:
     if include_dataset:
         lines = [
-            "| Dataset | Baseline | Comparison | Mean diff. (%) | Matched t | Matched p | Independent t | Independent p |",
-            "|---|---|---|---:|---:|---:|---:|---:|",
+            "| Dataset | Baseline | Comparison | Dataset diff. (%) | Dataset z | Dataset p | Fold diff. (%) | Matched t | Matched p |",
+            "|---|---|---|---:|---:|---:|---:|---:|---:|",
         ]
     else:
         lines = [
-            "| Baseline | Comparison | Mean diff. (%) | Matched t | Matched p | Independent t | Independent p |",
-            "|---|---|---:|---:|---:|---:|---:|",
+            "| Baseline | Comparison | Dataset-average diff. (%) | Dataset z | Dataset p | Fold-average diff. (%) | Matched t | Matched p |",
+            "|---|---|---:|---:|---:|---:|---:|---:|",
         ]
     for row in rows:
         cells = []
         if include_dataset:
             cells.append(row["dataset"])
-        cells.extend(
-            [
-                row["baseline"],
-                row["comparison"],
-                fmt_pct(row["mean_difference"]),
-                fmt_float(row["matched_t"]),
-                fmt_float(row["matched_p_value"]),
-                fmt_float(row["independent_t"]),
-                fmt_float(row["independent_p_value"]),
-            ]
-        )
+        if include_dataset:
+            cells.extend([
+                row["baseline"], row["comparison"],
+                fmt_pct(row["dataset_difference"]), fmt_float(row["dataset_z"]),
+                fmt_float(row["dataset_p_value"]), fmt_pct(row["fold_mean_difference"]),
+                fmt_float(row["fold_matched_t"]), fmt_float(row["fold_matched_p_value"]),
+            ])
+        else:
+            cells.extend([
+                row["baseline"], row["comparison"],
+                fmt_pct(row["dataset_average_difference"]), fmt_float(row["dataset_average_z"]),
+                fmt_float(row["dataset_average_p_value"]), fmt_pct(row["fold_average_difference"]),
+                fmt_float(row["fold_matched_t"]), fmt_float(row["fold_matched_p_value"]),
+            ])
         lines.append("| " + " | ".join(cells) + " |")
     return "\n".join(lines)
 
@@ -114,9 +117,9 @@ def make_latex_eval_table(
             rf"\caption{{{caption}}}",
             rf"\label{{{label}}}",
             r"\setlength{\tabcolsep}{3pt}",
-            r"\begin{tabular}{lllrrrrr}",
+            r"\begin{tabular}{lllrrrrrr}",
             r"\toprule",
-            r"Dataset & Baseline & Comparison & Diff. (\%) & Matched $t$ & Matched $p$ & Indep. $t$ & Indep. $p$ \\",
+            r"Dataset & Baseline & Comparison & Data diff. (\%) & $z$ & $p_z$ & Fold diff. (\%) & $t$ & $p_t$ \\",
             r"\midrule",
         ]
     else:
@@ -127,20 +130,23 @@ def make_latex_eval_table(
             rf"\caption{{{caption}}}",
             rf"\label{{{label}}}",
             r"\setlength{\tabcolsep}{4pt}",
-            r"\begin{tabular}{llrrrrr}",
+            r"\begin{tabular}{llrrrrrr}",
             r"\toprule",
-            r"Baseline & Comparison & Diff. (\%) & Matched $t$ & Matched $p$ & Indep. $t$ & Indep. $p$ \\",
+            r"Baseline & Comparison & Data avg. diff. (\%) & $z$ & $p_z$ & Fold avg. diff. (\%) & $t$ & $p_t$ \\",
             r"\midrule",
         ]
     for row in rows:
         prefix = f"{row['dataset']} & " if include_dataset else ""
+        if include_dataset:
+            values = [row["dataset_difference"], row["dataset_z"], row["dataset_p_value"],
+                      row["fold_mean_difference"], row["fold_matched_t"], row["fold_matched_p_value"]]
+        else:
+            values = [row["dataset_average_difference"], row["dataset_average_z"], row["dataset_average_p_value"],
+                      row["fold_average_difference"], row["fold_matched_t"], row["fold_matched_p_value"]]
         lines.append(
-            f"{prefix}{row['baseline']} & {row['comparison']} & "
-            f"{fmt_pct(row['mean_difference'])} & "
-            f"{fmt_float(row['matched_t'])} & "
-            f"{fmt_float(row['matched_p_value'])} & "
-            f"{fmt_float(row['independent_t'])} & "
-            f"{fmt_float(row['independent_p_value'])} \\\\"
+            f"{prefix}{row['baseline']} & {row['comparison']} & {fmt_pct(values[0])} & "
+            f"{fmt_float(values[1])} & {fmt_float(values[2])} & {fmt_pct(values[3])} & "
+            f"{fmt_float(values[4])} & {fmt_float(values[5])} \\\\"
         )
     lines.extend([r"\bottomrule", r"\end{tabular}", r"\end{table}"])
     return "\n".join(lines)
@@ -214,25 +220,25 @@ def write_notebook(
                     "\n",
                     "The cross validation split follows Chapter 4 method III: each instance receives a uniform random number, instances are sorted by that number, and the sorted instances are assigned to the five folds cyclically. This keeps fold sizes as equal as possible, with any two folds differing by at most one instance.\n",
                     "\n",
-                    "Chapter 5 gives two ways to compare two classification algorithms. For a single dataset, the matched-sample method compares fold-by-fold differences because both algorithms are tested on the same folds. The independent-sample method treats the two sets of fold accuracies as independent and uses a Welch-style t statistic. In this project, the matched-sample method is the main reference because every model uses the same folds; independent-sample results are included for comparison.\n",
+                    "Chapter 5 defines two aggregation levels for a single dataset. Dataset aggregation pools the correct predictions across all folds and applies Theorem 5.1's two-proportion z test. Fold aggregation pairs the two model accuracies from each identical test fold and applies Theorem 5.2's matched-sample t test. For multiple datasets, dataset averaging follows Theorem 5.4, while matched fold averaging follows Theorems 5.5 and 5.6.\n",
                     "\n",
                     "### Single Dataset: NBC vs. Bagging\n",
                     "\n",
                     single_nbc_table,
                     "\n\n",
-                    "Positive mean difference means the comparison model is more accurate than the baseline. At the 0.05 level, none of the NBC-vs-bagging differences are significant under the matched-sample test, although the best bagging mean is higher than NBC for Banknote Authentication and Glass Identification.\n",
+                    "Positive differences mean the comparison model is more accurate than the baseline. In the current run, none of the NBC-versus-bagging comparisons is significant at 0.05 under either single-dataset level. The largest gain is Bagging-30 over NBC on Glass Identification: 4.21 percentage points for dataset aggregation (p = 0.3692) and 4.23 points for matched fold aggregation (p = 0.2930).\n",
                     "\n",
                     "### Single Dataset: Bagging Size Comparison\n",
                     "\n",
                     single_bagging_table,
                     "\n\n",
-                    "The single-dataset bagging-size tests show one matched-sample significant result: on Glass Identification, Bagging-30 is higher than Bagging-10 with p = 0.0327. The corresponding independent-sample p-value is 0.7207, which shows how much less sensitive the independent-sample method can be when the same folds were actually used.\n",
+                    "The single-dataset bagging-size tests report both levels. The only p-value below 0.05 is the matched fold comparison of Bagging-10 with Bagging-30 on Glass Identification (difference = 2.79 points, p = 0.0327); its dataset-aggregation test is not significant (p = 0.5479).\n",
                     "\n",
                     "### Multiple Dataset Comparison\n",
                     "\n",
                     multiple_table,
                     "\n\n",
-                    "Across all three datasets, Bagging-30 has the largest average improvement over NBC, but the matched-sample p-value is 0.3002 and the independent-sample p-value is 0.5800. Therefore, using the Chapter 5 tests, the observed overall advantage is not statistically significant at alpha = 0.05.\n",
+                    "Across all three datasets, Bagging-30 has the largest average advantage over NBC: 1.50 percentage points at dataset averaging (p = 0.4683) and 1.51 points at matched fold averaging (p = 0.3002). Neither result is significant at 0.05, and no multiple-dataset comparison among bagging sizes is significant.\n",
                 ],
             },
             {
@@ -241,7 +247,7 @@ def write_notebook(
                 "source": [
                     "## Summary\n",
                     "\n",
-                    "Bagging improved the mean accuracy for Banknote Authentication and Glass Identification when the best ensemble size was selected. Image Segmentation tied the original NBC with 20 and 30 base models. The largest bagging gain over NBC was on Glass Identification with 30 base models. However, the Chapter 5 matched-sample tests do not show a statistically significant NBC-vs-bagging improvement at alpha = 0.05.\n",
+                    "Bagging-30 has the best observed mean accuracy on Banknote Authentication and Glass Identification and ties NBC on Image Segmentation. However, no NBC-versus-bagging comparison is significant at alpha = 0.05 at either single- or multiple-dataset aggregation levels. The evidence therefore supports a descriptive advantage for Bagging-30 in this run, but not a statistically confirmed general advantage.\n",
                 ],
             },
         ],
@@ -275,7 +281,7 @@ def write_report_tex(
     )
     multiple_table = make_latex_eval_table(
         multiple_rows,
-        "Multiple-dataset comparisons using Chapter 5 fold-averaging methods.",
+        "Multiple-dataset comparisons at the data-set-averaging and matched fold-averaging levels.",
         "tab:multiple",
         False,
     )
@@ -303,33 +309,38 @@ The NBC model estimates class priors and feature conditional probabilities with 
 
 Performance was measured by five-fold cross validation using only train and test splits. The fold assignment follows Chapter 4 method III. First, each instance is assigned a random number from the uniform interval [0,1]. Second, instances are sorted by the random number. Third, the sorted instances are read sequentially and assigned cyclically to folds 1 through 5. This makes the fold sizes approximately equal, and the size difference between any two folds is at most one. The random seed was fixed at 42 for reproducibility.
 
+Four Chapter 5 comparisons were computed. For one data set, data-set aggregation pools correct predictions over all test folds and applies Theorem 5.1's two-proportion statistic
+\[
+z=\frac{{\hat p_2-\hat p_1}}{{\sqrt{{2\hat p(1-\hat p)/n}}}},
+\qquad \hat p=\frac{{\hat p_1+\hat p_2}}{{2}}.
+\]
+Fold aggregation uses the matched differences $d_l=\hat p_{{2l}}-\hat p_{{1l}}$ from the same folds and Theorem 5.2's statistic $t=\bar d/\sqrt{{s_d^2/k}}$ with $k-1$ degrees of freedom. For multiple data sets, Theorem 5.4 averages each data set's pooled accuracy difference with equal data-set weight and estimates its normal variance from each data set's size. Theorems 5.5 and 5.6 average matched fold differences inside each data set and then across data sets; their $t$ statistic combines the within-data-set difference variances, and the degrees of freedom are rounded down according to Theorem 5.6. Positive differences in all tables mean that the comparison model is more accurate than the baseline. All data-set-level counts satisfy Chapter 5's large-sample condition.
+
 \section{{Experimental Results}}
 {summary_table}
 
 \section{{Analysis}}
-Bagging helped at least one ensemble size on Banknote Authentication and Glass Identification, but the best number of base models was not identical across datasets. For Banknote Authentication, the original NBC reached 89.80\% accuracy. Bagging with 30 base models obtained the best result, 90.09\%, but the improvement was small.
+The current run produced the same deterministic results whenever it was repeated with seed 42. For Banknote Authentication, NBC obtained 89.80\% mean fold accuracy and Bagging-30 obtained the highest value, 90.09\%, an increase of only 0.29 percentage points at the data-set aggregation level.
 
-Glass Identification benefited the most from bagging. The original NBC reached 60.29\%, while bagging with 30 base models reached 64.52\%. The 10-model and 20-model ensembles were also above NBC, so bagging was consistently better on this dataset in mean accuracy.
+Glass Identification showed the largest numerical benefit. NBC obtained 60.29\% mean fold accuracy, compared with 61.73\%, 62.60\%, and 64.52\% for Bagging-10, Bagging-20, and Bagging-30. Thus, Bagging-30 improved the data-set-aggregated accuracy over NBC by 4.21 percentage points.
 
-For Image Segmentation, NBC, Bagging-20, and Bagging-30 all produced 80.00\% mean accuracy, while Bagging-10 decreased to 79.05\%. This suggests that bagging did not materially improve this dataset under the chosen discretization.
+For Image Segmentation, NBC, Bagging-20, and Bagging-30 all produced 80.00\% mean accuracy, while Bagging-10 obtained 79.05\%. Bagging therefore did not improve the final accuracy on this data set under the selected preprocessing and model settings.
 
 \section{{Result Evaluation}}
-Chapter 5 describes matched-sample and independent-sample approaches for comparing two classification algorithms. In a single dataset, the matched-sample method compares the fold-by-fold accuracy differences. Its statistic is $t=\bar{{d}}/\sqrt{{s_d^2/k}}$ with $k-1$ degrees of freedom. The independent-sample method compares the two fold-accuracy samples as if they were independent, using $t=(\bar{{x}}_1-\bar{{x}}_2)/\sqrt{{s_1^2/k+s_2^2/k}}$ with Welch degrees of freedom. Because all models in this project are tested on the same folds, the matched-sample test is the more appropriate primary test; the independent-sample values are reported as secondary checks.
+Table~\ref{{tab:single-nbc}} reports both single-data-set aggregation levels. None of the NBC-versus-bagging comparisons is significant at $\alpha=0.05$. The largest observed gain is NBC versus Bagging-30 on Glass Identification: the pooled data-set difference is 4.21 percentage points ($z=0.8980$, $p=0.3692$), and the matched fold difference is 4.23 points ($t=1.2097$, $df=4$, $p=0.2930$).
 
 {single_nbc_table}
 
-Table~\ref{{tab:single-bagging}} compares different bagging sizes inside each dataset. One matched-sample result is significant at $\alpha=0.05$: for Glass Identification, Bagging-30 is better than Bagging-10 with $p=0.0327$. The corresponding independent-sample $p$-value is 0.7207, showing that the independent-sample method is much less sensitive when the same folds are actually shared.
+Table~\ref{{tab:single-bagging}} compares ensemble sizes. The matched fold test finds one significant result: on Glass Identification, Bagging-30 exceeds Bagging-10 by 2.79 points ($t=3.2071$, $df=4$, $p=0.0327$). The data-set aggregation test for the same comparison is not significant ($z=0.6010$, $p=0.5479$). This difference illustrates that the aggregation level changes the sampling variance and therefore the inference.
 
 {single_bagging_table}
 
-For multiple datasets, Chapter 5 extends the fold-averaging approach. The matched-sample method first averages the fold differences inside each dataset and then averages these differences across datasets. The independent-sample method averages each algorithm's fold accuracies inside each dataset and compares the global means. Table~\ref{{tab:multiple}} reports both methods for NBC versus bagging and for different bagging sizes.
+Table~\ref{{tab:multiple}} reports the two multiple-data-set levels. Bagging-30 has the largest average advantage over NBC: 1.50 percentage points at the data-set-averaging level ($z=0.7253$, $p=0.4683$) and 1.51 points at the matched fold-averaging level ($t=1.1336$, $df=6$, $p=0.3002$). Neither result is significant. No comparison among ensemble sizes is significant under either multiple-data-set test; the smallest such p-value is 0.1708 for the matched Bagging-10 versus Bagging-30 comparison.
 
 {multiple_table}
 
-The statistical comparison supports a cautious conclusion. Bagging-30 has the largest average improvement over NBC across datasets, but its matched-sample $p$-value is 0.3002 and its independent-sample $p$-value is 0.5800, so the improvement is not statistically significant at $\alpha=0.05$. Comparing different bagging sizes, Bagging-30 has the highest average accuracy among ensembles, but none of the multiple-dataset bagging-size comparisons are significant at $\alpha=0.05$.
-
 \section{{Conclusion}}
-Overall, bagging was better than the original NBC in mean accuracy for Banknote Authentication and Glass Identification, and it tied NBC on Image Segmentation when 20 or 30 base models were used. The best ensemble size was 30 for Banknote Authentication and Glass Identification, while Image Segmentation showed no improvement beyond the NBC baseline. According to the Chapter 5 statistical tests, these improvements are not significant at the 0.05 level, so the final conclusion is that bagging shows a positive but not statistically confirmed advantage in this experiment.
+The current run shows a modest descriptive advantage for larger bagging ensembles: Bagging-30 has the highest mean accuracy on Banknote Authentication and Glass Identification and ties NBC on Image Segmentation. However, every NBC-versus-bagging test has $p>0.05$ at both the single-data-set and multiple-data-set levels. The only significant result is the matched fold comparison between Bagging-10 and Bagging-30 on Glass Identification, and its pooled data-set test is not significant. Consequently, this experiment does not provide consistent statistical evidence that bagging outperforms NBC or that 30 estimators is universally superior. It supports only the narrower conclusion that Bagging-30 has the best observed average performance for these settings and this fixed run.
 
 \end{{document}}
 """
@@ -366,38 +377,41 @@ def write_report_pdf(
         )
 
     single_lines = [
-        "Dataset              Comparison          Diff.   Match t  Match p  Indep t  Indep p",
+        "Dataset              Comparison       Data diff  Data z  Data p  Fold diff  Match t  Match p",
         "--------------------------------------------------------------------------------",
     ]
     for row in nbc_vs_bagging_rows(single_rows):
         single_lines.append(
             f"{row['dataset'][:20]:20} {row['comparison'][:18]:18} "
-            f"{fmt_pct(row['mean_difference']):>6}%  "
-            f"{fmt_float(row['matched_t']):>7}  {fmt_float(row['matched_p_value']):>7}  "
-            f"{fmt_float(row['independent_t']):>7}  {fmt_float(row['independent_p_value']):>7}"
+            f"{fmt_pct(row['dataset_difference']):>6}%  "
+            f"{fmt_float(row['dataset_z']):>7}  {fmt_float(row['dataset_p_value']):>7}  "
+            f"{fmt_pct(row['fold_mean_difference']):>6}%  "
+            f"{fmt_float(row['fold_matched_t']):>7}  {fmt_float(row['fold_matched_p_value']):>7}"
         )
     single_bagging_lines = [
-        "Dataset              Baseline       Comparison     Diff.   Match t  Match p  Indep t  Indep p",
+        "Dataset              Baseline       Comparison   Data diff Data z Data p Fold diff Match t Match p",
         "-------------------------------------------------------------------------------------------",
     ]
     for row in bagging_size_rows(single_rows):
         single_bagging_lines.append(
             f"{row['dataset'][:20]:20} {row['baseline'][:13]:13} {row['comparison'][:13]:13} "
-            f"{fmt_pct(row['mean_difference']):>6}%  "
-            f"{fmt_float(row['matched_t']):>7}  {fmt_float(row['matched_p_value']):>7}  "
-            f"{fmt_float(row['independent_t']):>7}  {fmt_float(row['independent_p_value']):>7}"
+            f"{fmt_pct(row['dataset_difference']):>6}%  "
+            f"{fmt_float(row['dataset_z']):>7}  {fmt_float(row['dataset_p_value']):>7}  "
+            f"{fmt_pct(row['fold_mean_difference']):>6}%  "
+            f"{fmt_float(row['fold_matched_t']):>7}  {fmt_float(row['fold_matched_p_value']):>7}"
         )
 
     multiple_lines = [
-        "Baseline            Comparison          Diff.   Match t  Match p  Indep t  Indep p",
+        "Baseline            Comparison       Data avg  Data z  Data p  Fold avg  Match t  Match p",
         "-------------------------------------------------------------------------------",
     ]
     for row in multiple_rows:
         multiple_lines.append(
             f"{row['baseline'][:18]:18} {row['comparison'][:18]:18} "
-            f"{fmt_pct(row['mean_difference']):>6}%  "
-            f"{fmt_float(row['matched_t']):>7}  {fmt_float(row['matched_p_value']):>7}  "
-            f"{fmt_float(row['independent_t']):>7}  {fmt_float(row['independent_p_value']):>7}"
+            f"{fmt_pct(row['dataset_average_difference']):>6}%  "
+            f"{fmt_float(row['dataset_average_z']):>7}  {fmt_float(row['dataset_average_p_value']):>7}  "
+            f"{fmt_pct(row['fold_average_difference']):>6}%  "
+            f"{fmt_float(row['fold_matched_t']):>7}  {fmt_float(row['fold_matched_p_value']):>7}"
         )
 
     page1 = (
